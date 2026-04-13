@@ -260,7 +260,7 @@
 
 <!-- ===== ADMIN LOGIN MODAL ===== -->
 <div class="modal-overlay" id="adminLoginModal" onclick="closeAdminLogin(event)">
-  <div class="modal glass-modal">
+  <div class="modal glass-modal" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeAdminLogin()">✕</button>
     <div class="modal-logo">🇯🇲 YaadNews</div>
     <h2 class="modal-title">Admin Portal</h2>
@@ -320,7 +320,7 @@
 
 <!-- ===== POST EDITOR MODAL ===== -->
 <div class="modal-overlay editor-overlay" id="editorModal" onclick="closeEditor(event)">
-  <div class="editor-modal glass-modal">
+  <div class="editor-modal glass-modal" onclick="event.stopPropagation()">
     <div class="editor-header">
       <h2 id="editorTitle">New Post</h2>
       <button class="modal-close" onclick="closeEditor()">✕</button>

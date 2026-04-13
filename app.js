@@ -114,6 +114,8 @@ let uploadedMediaType = null;
 let visibleCount = 6;
 const ADMIN_USER = 'kerrtheinfluencer';
 const ADMIN_PASS = 'Iamsuperman2021';
+window.ADMIN_USER = ADMIN_USER;
+window.ADMIN_PASS = ADMIN_PASS;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -506,24 +508,31 @@ function showAdminLogin() {
 }
 function closeAdminLogin(e) {
   if (e && e.target !== document.getElementById('adminLoginModal')) return;
+  _closeAdminLogin();
+}
+function _closeAdminLogin() {
   document.getElementById('adminLoginModal').classList.remove('open');
   document.body.style.overflow = '';
   document.getElementById('loginError').classList.remove('show');
+  document.getElementById('adminUser').value = '';
+  document.getElementById('adminPass').value = '';
 }
 function doLogin() {
-  const u = document.getElementById('adminUser').value.trim();
-  const p = document.getElementById('adminPass').value;
-  const err = document.getElementById('loginError');
-  if (u === ADMIN_USER && p === ADMIN_PASS) {
+  var u = (document.getElementById('adminUser').value || '').trim();
+  var p = (document.getElementById('adminPass').value || '');
+  var err = document.getElementById('loginError');
+  if (u === 'kerrtheinfluencer' && p === 'Iamsuperman2021') {
     Store.set('adminAuth', true);
     document.getElementById('adminLoginModal').classList.remove('open');
     document.body.style.overflow = '';
+    err.classList.remove('show');
     openAdminDashboard();
     toast('Welcome back, Editor!', 'success');
   } else {
-    err.textContent = 'Invalid username or password. Please try again.';
+    err.textContent = 'Incorrect credentials. Check username and password.';
     err.classList.add('show');
     document.getElementById('adminPass').value = '';
+    document.getElementById('adminUser').focus();
   }
 }
 function togglePw(btn) {
@@ -739,7 +748,6 @@ function openEditor(id) {
 }
 
 function closeEditor(e) {
-  if (e && e.target !== document.getElementById('editorModal')) return;
   document.getElementById('editorModal').classList.remove('open');
   document.body.style.overflow = '';
 }
