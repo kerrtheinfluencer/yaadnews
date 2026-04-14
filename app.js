@@ -39,6 +39,16 @@ const catLabel = c => CAT[c]?.label || c;
 const catIcon  = c => CAT[c]?.icon  || '📰';
 const catDesc  = c => CAT[c]?.desc  || '';
 
+// ===== DATA VERSION — bump this to force re-seed on deploy =====
+const DATA_VERSION = '3';
+function checkDataVersion() {
+  if (Store.get('dataVersion') !== DATA_VERSION) {
+    localStorage.removeItem('yn_articles');
+    localStorage.removeItem('yn_ticker');
+    Store.set('dataVersion', DATA_VERSION);
+  }
+}
+
 // ===== SEED DATA =====
 function seedArticles() {
   if (Store.get('articles')) return;
@@ -127,13 +137,14 @@ function debounce(fn, d) { let t; return (...a) => { clearTimeout(t); t=setTimeo
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-  seedArticles();
+  checkDataVersion(); // clear stale data on version bump
+  seedArticles();   // must run before routing
   seedTicker();
   initTicker();
   initHeader();
   initSearch();
   initDragDrop();
-  initHashRouter();
+  initHashRouter(); // runs AFTER seed so getPublished() has data
 });
 
 // ===== TICKER =====
@@ -205,10 +216,11 @@ function initHashRouter() {
 }
 
 function handleRoute() {
-  const hash = location.hash.replace('#','') || 'home';
+  const raw  = (location.hash || '').replace(/^#/, '').trim();
+  const hash = raw || 'home';
   const parts = hash.split('/');
-  const page  = parts[0];
-  const param = parts[1];
+  const page  = parts[0] || 'home';
+  const param = parts[1] || '';
 
   // Update nav active state
   document.querySelectorAll('.dnav-link').forEach(l => {
@@ -226,14 +238,16 @@ function handleRoute() {
       renderArticleDetail(a);
       updateMetaForArticle(a);
     } else {
-      navigateTo('home');
+      location.hash = 'home';
+      return;
     }
   } else if (CAT[page]) {
     showSection('page-category');
     renderCategory(page);
     updateMeta({ title:`${CAT[page].label} — ${SITE_NAME}`, desc:CAT[page].desc, url:`/${page}`, type:'website' });
   } else {
-    navigateTo('home');
+    location.hash = 'home';
+    return;
   }
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -318,6 +332,7 @@ function renderHero() {
     : `<div style="position:absolute;inset:0;background:linear-gradient(135deg,#0a2a1a,#1a0a2e)"></div>`;
 
   lead.innerHTML = `
+    <a href="#article/${featured.id}" style="position:absolute;inset:0;z-index:2;display:block" aria-label="${featured.title}"></a>
     ${mediaBg}
     <div class="hero-overlay"></div>
     ${featured.breaking ? '<div class="hero-breaking-badge">BREAKING</div>' : ''}
@@ -333,11 +348,11 @@ function renderHero() {
         <span>${(featured.views||0).toLocaleString()} views</span>
       </div>
     </div>`;
-  lead.onclick = () => navigateTo(`article/${featured.id}`);
+  lead.style.cursor = 'pointer';
 
   const rail = document.getElementById('heroRail');
   rail.innerHTML = sides.map(a => `
-    <div class="hero-side-card" onclick="navigateTo('article/${a.id}')">
+    <a class="hero-side-card" href="#article/${a.id}" style="text-decoration:none">
       ${a.mediaSrc
         ? `<img class="hsc-img" src="${a.mediaSrc}" alt="${a.title}" loading="lazy">`
         : `<div class="hsc-img-placeholder">${catIcon(a.category)}</div>`}
@@ -346,7 +361,7 @@ function renderHero() {
         <div class="hsc-title">${a.title}</div>
         <div class="hsc-time">${timeAgo(a.timestamp)}</div>
       </div>
-    </div>`).join('');
+    </a>`).join('');
 }
 
 function renderGrid() {
@@ -364,7 +379,7 @@ function cardHtml(a, idx=0) {
   const delay = (idx%6)*55;
   const media = a.mediaSrc
     ? (a.mediaType==='video'
-        ? `<video class="card-img" src="${a.mediaSrc}" muted loop autoplay playsinline loading="lazy"></video>`
+        ? `<video class="card-img" src="${a.mediaSrc}" muted loop autoplay playsinline></video>`
         : `<img class="card-img" src="${a.mediaSrc}" alt="${a.title}" loading="lazy">`)
     : `<div class="card-no-img">${catIcon(a.category)}</div>`;
   const badges = [
@@ -372,28 +387,25 @@ function cardHtml(a, idx=0) {
     a.featured  ? '<span class="badge badge-featured">Featured</span>':'',
     a.mediaType==='video' ? '<span class="badge badge-video">Video</span>':''
   ].filter(Boolean).join('');
-  // Use anchor for SEO crawlability
   return `
-    <article class="article-card" style="animation-delay:${delay}ms">
-      <a href="#article/${a.id}" style="display:contents;text-decoration:none">
-        <div class="card-media">
-          ${media}
-          ${a.mediaType==='video'?'<div class="card-video-tag">VIDEO</div>':''}
+    <a class="article-card" href="#article/${a.id}" style="animation-delay:${delay}ms;text-decoration:none;display:flex;flex-direction:column;">
+      <div class="card-media">
+        ${media}
+        ${a.mediaType==='video'?'<div class="card-video-tag">VIDEO</div>':''}
+      </div>
+      <div class="card-body">
+        <div class="card-meta-row">
+          <span class="card-cat">${catLabel(a.category)}</span>
+          <span class="card-time">${timeAgo(a.timestamp)}</span>
         </div>
-        <div class="card-body">
-          <div class="card-meta-row">
-            <span class="card-cat">${catLabel(a.category)}</span>
-            <span class="card-time">${timeAgo(a.timestamp)}</span>
-          </div>
-          <div class="card-title">${a.title}</div>
-          ${a.excerpt?`<div class="card-excerpt">${a.excerpt.substring(0,115)}${a.excerpt.length>115?'…':''}</div>`:''}
-          <div class="card-footer">
-            <span class="card-author">${a.author}</span>
-            <div class="card-badges">${badges}</div>
-          </div>
+        <div class="card-title">${a.title}</div>
+        ${a.excerpt?`<div class="card-excerpt">${a.excerpt.substring(0,115)}${a.excerpt.length>115?'…':''}</div>`:''}
+        <div class="card-footer">
+          <span class="card-author">${a.author}</span>
+          <div class="card-badges">${badges}</div>
         </div>
-      </a>
-    </article>`;
+      </div>
+    </a>`;
 }
 
 function filterArticles(f, btn) {
@@ -482,13 +494,13 @@ function renderArticleAside(current) {
     <div class="aside-block">
       <div class="aside-head">🔥 Trending Now</div>
       ${trending.map(a => `
-        <div class="aside-story" onclick="navigateTo('article/${a.id}')">
+        <a class="aside-story" href="#article/${a.id}" style="text-decoration:none">
           ${a.mediaSrc ? `<img class="aside-story-img" src="${a.mediaSrc}" alt="${a.title}" loading="lazy">` : `<div class="aside-story-img" style="display:flex;align-items:center;justify-content:center;font-size:20px">${catIcon(a.category)}</div>`}
           <div>
             <div class="aside-story-cat">${catLabel(a.category)}</div>
             <div class="aside-story-title">${a.title}</div>
           </div>
-        </div>`).join('')}
+        </a>`).join('')}
     </div>`;
 }
 

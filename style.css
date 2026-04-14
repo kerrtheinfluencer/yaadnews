@@ -72,8 +72,8 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{font-family:var(--sans);background:var(--void);color:var(--t1);min-height:100vh;overflow-x:hidden;line-height:1.6}
-a{color:inherit;text-decoration:none}
-button{cursor:pointer;border:none;background:none;font-family:inherit;color:inherit}
+a { color: inherit; text-decoration: none; -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; border: none; background: none; font-family: inherit; color: inherit; -webkit-tap-highlight-color: transparent; }
 img,video{max-width:100%;height:auto;display:block}
 input,textarea,select{
   font-family:var(--sans);color:var(--t1);outline:none;width:100%;
@@ -398,6 +398,8 @@ textarea{resize:vertical}
   display:flex;cursor:pointer;flex:1;min-height:148px;
   transition:background .25s,transform .25s,box-shadow .25s;
   position:relative;
+  color:inherit;text-decoration:none;
+  -webkit-tap-highlight-color:transparent;
 }
 .hero-side-card::before{
   content:'';position:absolute;inset:0;border-radius:inherit;
@@ -462,6 +464,9 @@ textarea{resize:vertical}
   position:relative;
   transition:transform .35s var(--ease),background .3s,box-shadow .35s;
   animation:cardRise .45s var(--ease) both;
+  /* Anchor reset */
+  color:inherit;text-decoration:none;
+  -webkit-tap-highlight-color:transparent;
 }
 /* Iridescent sheen */
 .article-card::before{
@@ -675,6 +680,7 @@ textarea{resize:vertical}
 .aside-story{
   display:flex;gap:10px;padding:12px 14px;cursor:pointer;
   border-bottom:1px solid var(--border0);transition:background .2s;
+  color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;
 }
 .aside-story:last-child{border-bottom:none}
 .aside-story:hover{background:var(--g2)}
