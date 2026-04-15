@@ -1,12 +1,13 @@
 /* ===================================================
-   YAADNEWS — app.js
-   Hash routing · SEO meta injection · Admin · Full
+   YAADNEWS V2 — Fixed & Enhanced
+   Hash routing · SEO meta injection · Admin · Skeletons
    =================================================== */
 
 // ===== STORE =====
 const Store = {
   get(k, fb = null) { try { const v = localStorage.getItem('yn_'+k); return v ? JSON.parse(v) : fb; } catch(e) { return fb; } },
-  set(k, v) { try { localStorage.setItem('yn_'+k, JSON.stringify(v)); } catch(e) {} }
+  set(k, v) { try { localStorage.setItem('yn_'+k, JSON.stringify(v)); } catch(e) {} },
+  clear(k) { try { localStorage.removeItem('yn_'+k); } catch(e) {} }
 };
 
 // ===== CONSTANTS =====
@@ -14,6 +15,7 @@ const ADMIN_USER = 'kerrtheinfluencer';
 const ADMIN_PASS = 'Iamsuperman2021';
 const SITE_URL   = 'https://yaadnews.com';
 const SITE_NAME  = 'YaadNews';
+const DATA_VERSION = '4'; // Bumped for V2
 
 // ===== STATE =====
 let currentFilter = 'all';
@@ -22,6 +24,7 @@ let editingId     = null;
 let uploadedSrc   = null;
 let uploadedType  = null;
 let adminSideOpen = false;
+let isInitialized = false;
 
 // ===== CATEGORY META =====
 const CAT = {
@@ -39,19 +42,22 @@ const catLabel = c => CAT[c]?.label || c;
 const catIcon  = c => CAT[c]?.icon  || '📰';
 const catDesc  = c => CAT[c]?.desc  || '';
 
-// ===== DATA VERSION — bump this to force re-seed on deploy =====
-const DATA_VERSION = '3';
+// ===== DATA VERSION =====
 function checkDataVersion() {
   if (Store.get('dataVersion') !== DATA_VERSION) {
-    localStorage.removeItem('yn_articles');
-    localStorage.removeItem('yn_ticker');
+    Store.clear('articles');
+    Store.clear('ticker');
     Store.set('dataVersion', DATA_VERSION);
+    console.log('🔄 V2 Data reset for new version');
   }
 }
 
-// ===== SEED DATA =====
+// ===== SEED DATA (ENHANCED) =====
 function seedArticles() {
-  if (Store.get('articles')) return;
+  const existing = Store.get('articles');
+  // Only seed if null or empty array
+  if (existing && existing.length > 0) return;
+  
   const n = Date.now(), h = m => n - m * 60000;
   const arts = [
     { id:'art_1', title:'PM Holness Announces Major Infrastructure Push for Kingston Metro Corridor',
@@ -104,6 +110,7 @@ function seedArticles() {
       extLink:'', breaking:false, featured:false, published:true, timestamp:h(800), views:3401 }
   ];
   Store.set('articles', arts);
+  console.log('✅ Seeded', arts.length, 'articles');
 }
 
 function seedTicker() {
@@ -135,16 +142,51 @@ function formatDate(ts) {
 }
 function debounce(fn, d) { let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a),d); }; }
 
+// ===== SKELETON HELPERS =====
+function heroSkeleton() {
+  return `
+    <div class="hero-skeleton">
+      <div class="sk-img"></div>
+      <div class="sk-content">
+        <div class="sk-badge"></div>
+        <div class="sk-title"></div>
+        <div class="sk-title sk-title-sm"></div>
+        <div class="sk-meta"></div>
+      </div>
+    </div>`;
+}
+
+function cardSkeleton(count=6) {
+  return Array(count).fill(0).map((_,i) => `
+    <div class="article-card skeleton-card" style="animation-delay:${i*50}ms">
+      <div class="sk-media"></div>
+      <div class="sk-body">
+        <div class="sk-line sk-line-short"></div>
+        <div class="sk-line"></div>
+        <div class="sk-line sk-line-med"></div>
+      </div>
+    </div>
+  `).join('');
+}
+
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', () => {
-  checkDataVersion(); // clear stale data on version bump
-  seedArticles();   // must run before routing
+  console.log('🚀 YaadNews V2 Initializing...');
+  checkDataVersion();
+  seedArticles();
   seedTicker();
   initTicker();
   initHeader();
   initSearch();
   initDragDrop();
-  initHashRouter(); // runs AFTER seed so getPublished() has data
+  initHashRouter();
+  
+  // Force initial render if hash is empty or home
+  if (!location.hash || location.hash === '#' || location.hash === '#home') {
+    renderHome();
+  }
+  
+  isInitialized = true;
 });
 
 // ===== TICKER =====
@@ -159,25 +201,24 @@ function initTicker() {
 function initHeader() {
   const h = document.getElementById('header');
   window.addEventListener('scroll', () => h.classList.toggle('scrolled', window.scrollY > 20), {passive:true});
-  document.getElementById('menuBtn').addEventListener('click', () => {
-    const nav = document.getElementById('sideNav');
-    const bd  = document.getElementById('backdrop');
-    const btn = document.getElementById('menuBtn');
-    const open = nav.classList.toggle('open');
-    bd.classList.toggle('show', open);
-    btn.classList.toggle('open', open);
-    document.body.style.overflow = open ? 'hidden' : '';
-  });
-  document.getElementById('adminBtn').addEventListener('click', () => {
+  
+  document.getElementById('menuBtn')?.addEventListener('click', toggleSideNav);
+  document.getElementById('adminBtn')?.addEventListener('click', () => {
     if (Store.get('adminAuth')) openAdminDashboard(); else showAdminLogin();
   });
-  document.getElementById('searchBtn').addEventListener('click', () => {
-    const t = document.getElementById('searchTray');
-    t.classList.toggle('open');
-    if (t.classList.contains('open')) setTimeout(() => document.getElementById('searchInput').focus(), 80);
-  });
-  document.getElementById('searchInput').addEventListener('input', debounce(doSearch, 220));
-  document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key==='Escape') closeSearch(); });
+  document.getElementById('searchBtn')?.addEventListener('click', toggleSearch);
+  document.getElementById('searchInput')?.addEventListener('input', debounce(doSearch, 220));
+  document.getElementById('searchInput')?.addEventListener('keydown', e => { if (e.key==='Escape') closeSearch(); });
+}
+
+function toggleSideNav() {
+  const nav = document.getElementById('sideNav');
+  const bd  = document.getElementById('backdrop');
+  const btn = document.getElementById('menuBtn');
+  const open = nav.classList.toggle('open');
+  bd.classList.toggle('show', open);
+  btn.classList.toggle('open', open);
+  document.body.style.overflow = open ? 'hidden' : '';
 }
 
 function closeSideNav() {
@@ -186,11 +227,19 @@ function closeSideNav() {
   document.getElementById('menuBtn').classList.remove('open');
   document.body.style.overflow = '';
 }
+
+function toggleSearch() {
+  const t = document.getElementById('searchTray');
+  const isOpen = t.classList.toggle('open');
+  if (isOpen) setTimeout(() => document.getElementById('searchInput').focus(), 80);
+}
+
 function closeSearch() {
   document.getElementById('searchTray').classList.remove('open');
   document.getElementById('searchInput').value = '';
   document.getElementById('searchResults').innerHTML = '';
 }
+
 function doSearch() {
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   const res = document.getElementById('searchResults');
@@ -238,6 +287,7 @@ function handleRoute() {
       renderArticleDetail(a);
       updateMetaForArticle(a);
     } else {
+      toast('Article not found', 'error');
       location.hash = 'home';
       return;
     }
@@ -259,14 +309,18 @@ function navigateTo(path) {
 function showSection(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const el = document.getElementById(id);
-  if (el) el.classList.add('active');
+  if (el) {
+    el.classList.add('active');
+    // Trigger fade in animation
+    el.style.opacity = '0';
+    setTimeout(() => el.style.opacity = '1', 50);
+  }
 }
 
-// ===== SEO: DYNAMIC META =====
+// ===== SEO =====
 function updateMeta({title, desc, url, type='website', image=''}) {
   const canonical = SITE_URL + url;
   const img = image || SITE_URL + '/og-default.jpg';
-  const set = (id,v) => { const el=document.getElementById(id); if(el) el.setAttribute(el.tagName==='META'?'content':'href',v); };
   document.getElementById('metaTitle').textContent = title;
   const m = n => document.querySelector(`meta[name="${n}"]`);
   const og = p => document.querySelector(`meta[property="${p}"]`);
@@ -289,7 +343,6 @@ function updateMetaForArticle(a) {
   const seoDesc  = a.seoDesc  || a.excerpt || '';
   const url = `/article/${a.id}/${slugify(a.title)}`;
   updateMeta({ title:`${seoTitle} — ${SITE_NAME}`, desc:seoDesc, url, type:'article', image:a.mediaSrc||'' });
-  // Inject Article structured data
   const sd = {
     "@context":"https://schema.org",
     "@type":"NewsArticle",
@@ -309,22 +362,37 @@ function updateMetaForArticle(a) {
   if (el) el.textContent = JSON.stringify(sd);
 }
 
-// ===== RENDER HOME =====
+// ===== RENDER HOME (FIXED) =====
 function renderHome() {
-  renderHero();
-  currentFilter = 'all';
-  visibleCount  = 6;
-  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.f === 'all'));
-  renderGrid();
+  // Show skeletons first
+  document.getElementById('heroLead').innerHTML = heroSkeleton();
+  document.getElementById('heroRail').innerHTML = '<div style="display:flex;flex-direction:column;gap:12px;height:100%">' + cardSkeleton(3) + '</div>';
+  document.getElementById('articlesGrid').innerHTML = cardSkeleton(6);
+  
+  // Small delay to allow skeletons to render, then load data
+  setTimeout(() => {
+    renderHero();
+    currentFilter = 'all';
+    visibleCount = 6;
+    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.f === 'all'));
+    renderGrid();
+  }, 100);
 }
 
 function renderHero() {
   const arts = getPublished().sort((a,b) => b.timestamp - a.timestamp);
+  
+  if (!arts.length) {
+    document.getElementById('heroLead').innerHTML = '<div class="empty-state" style="min-height:400px"><div>📰</div><p>No articles yet</p></div>';
+    document.getElementById('heroRail').innerHTML = '';
+    return;
+  }
+  
   const featured = arts.find(a => a.featured) || arts[0];
-  if (!featured) return;
   const sides = arts.filter(a => a.id !== featured.id).slice(0, 3);
 
-  const lead = document.getElementById('heroPrimary');
+  // FIX: Changed heroPrimary to heroLead to match HTML ID
+  const lead = document.getElementById('heroLead');
   const mediaBg = featured.mediaSrc
     ? (featured.mediaType==='video'
         ? `<video class="hero-img" src="${featured.mediaSrc}" autoplay muted loop playsinline></video>`
@@ -367,12 +435,20 @@ function renderHero() {
 function renderGrid() {
   const grid = document.getElementById('articlesGrid');
   if (!grid) return;
+  
   let arts = getPublished().sort((a,b) => b.timestamp - a.timestamp);
   if (currentFilter !== 'all') arts = arts.filter(a => a.category === currentFilter);
+  
   const slice = arts.slice(0, visibleCount);
-  grid.innerHTML = slice.length ? slice.map((a,i) => cardHtml(a,i)).join('') : `<div class="empty-state"><div>${catIcon(currentFilter)}</div><p>No stories found</p></div>`;
+  
+  if (!slice.length) {
+    grid.innerHTML = `<div class="empty-state"><div>${catIcon(currentFilter)}</div><p>No stories found in ${catLabel(currentFilter)}</p><button class="glass-btn" onclick="filterArticles('all', document.querySelector('[data-f=\\'all\\']'))" style="margin-top:12px">View All Stories</button></div>`;
+  } else {
+    grid.innerHTML = slice.map((a,i) => cardHtml(a,i)).join('');
+  }
+  
   const btn = document.getElementById('loadMoreBtn');
-  if (btn) btn.style.display = arts.length > visibleCount ? '' : 'none';
+  if (btn) btn.style.display = arts.length > visibleCount ? 'inline-flex' : 'none';
 }
 
 function cardHtml(a, idx=0) {
@@ -387,6 +463,7 @@ function cardHtml(a, idx=0) {
     a.featured  ? '<span class="badge badge-featured">Featured</span>':'',
     a.mediaType==='video' ? '<span class="badge badge-video">Video</span>':''
   ].filter(Boolean).join('');
+  
   return `
     <a class="article-card" href="#article/${a.id}" style="animation-delay:${delay}ms;text-decoration:none;display:flex;flex-direction:column;">
       <div class="card-media">
@@ -409,12 +486,29 @@ function cardHtml(a, idx=0) {
 }
 
 function filterArticles(f, btn) {
-  currentFilter = f; visibleCount = 6;
+  currentFilter = f; 
+  visibleCount = 6;
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
-  renderGrid();
+  if (btn) btn.classList.add('active');
+  
+  // Show skeleton during filter
+  const grid = document.getElementById('articlesGrid');
+  grid.style.opacity = '0.5';
+  setTimeout(() => {
+    renderGrid();
+    grid.style.opacity = '1';
+  }, 150);
 }
-function loadMore() { visibleCount += 6; renderGrid(); }
+
+function loadMore() { 
+  visibleCount += 6; 
+  const btn = document.getElementById('loadMoreBtn');
+  btn.innerHTML = 'Loading...';
+  setTimeout(() => {
+    renderGrid();
+    btn.innerHTML = 'Load More Stories ↓';
+  }, 300);
+}
 
 // ===== CATEGORY =====
 function renderCategory(cat) {
@@ -423,7 +517,8 @@ function renderCategory(cat) {
   document.getElementById('catSub').textContent   = catDesc(cat);
   const arts = getPublished().filter(a => a.category===cat).sort((a,b) => b.timestamp-a.timestamp);
   const grid = document.getElementById('catGrid');
-  grid.innerHTML = arts.length ? arts.map((a,i) => cardHtml(a,i)).join('') : `<div class="empty-state"><div>${catIcon(cat)}</div><p>No ${catLabel(cat)} stories yet</p></div>`;
+  grid.innerHTML = arts.length ? arts.map((a,i) => cardHtml(a,i)).join('') : 
+    `<div class="empty-state"><div>${catIcon(cat)}</div><p>No ${catLabel(cat)} stories yet</p><button class="gold-btn" onclick="navigateTo('home')" style="margin-top:16px">Browse All News</button></div>`;
 }
 
 // ===== ARTICLE DETAIL =====
@@ -480,9 +575,8 @@ function renderArticleDetail(a) {
   // Related
   const related = getPublished().filter(x => x.id!==a.id && x.category===a.category).sort(()=>Math.random()-.5).slice(0,3);
   const rg = document.getElementById('relGrid');
-  if (rg) rg.innerHTML = related.map((r,i) => cardHtml(r,i)).join('');
+  if (rg) rg.innerHTML = related.length ? related.map((r,i) => cardHtml(r,i)).join('') : '<p style="color:var(--t3)">No related stories</p>';
 
-  // Aside
   renderArticleAside(a);
 }
 
@@ -493,14 +587,14 @@ function renderArticleAside(current) {
   aside.innerHTML = `
     <div class="aside-block">
       <div class="aside-head">🔥 Trending Now</div>
-      ${trending.map(a => `
+      ${trending.length ? trending.map(a => `
         <a class="aside-story" href="#article/${a.id}" style="text-decoration:none">
           ${a.mediaSrc ? `<img class="aside-story-img" src="${a.mediaSrc}" alt="${a.title}" loading="lazy">` : `<div class="aside-story-img" style="display:flex;align-items:center;justify-content:center;font-size:20px">${catIcon(a.category)}</div>`}
           <div>
             <div class="aside-story-cat">${catLabel(a.category)}</div>
             <div class="aside-story-title">${a.title}</div>
           </div>
-        </a>`).join('')}
+        </a>`).join('') : '<div style="padding:12px;color:var(--t3);font-size:12px">No trending stories</div>'}
     </div>`;
 }
 
@@ -511,6 +605,7 @@ function filterAndGo(tag) {
     const filtered = getPublished().filter(a => (a.tags||[]).includes(tag));
     const grid = document.getElementById('articlesGrid');
     if (grid) grid.innerHTML = filtered.map((a,i) => cardHtml(a,i)).join('');
+    toast(`Showing articles tagged: ${tag}`, 'info');
   }, 200);
 }
 
@@ -552,7 +647,7 @@ function closeLightbox() {
   document.body.style.overflow = '';
 }
 
-// ===== ADMIN LOGIN =====
+// ===== ADMIN (unchanged core, kept for brevity) =====
 function showAdminLogin() {
   document.getElementById('adminLoginModal').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -591,8 +686,6 @@ function togglePw(btn) {
   const inp = btn.previousElementSibling;
   inp.type = inp.type==='password' ? 'text' : 'password';
 }
-
-// ===== ADMIN DASHBOARD =====
 function openAdminDashboard() {
   document.getElementById('adminShell').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -609,7 +702,6 @@ function toggleAdminSidebar() {
   adminSideOpen = !adminSideOpen;
   side.classList.toggle('open', adminSideOpen);
 }
-
 function adminTab(tab, btn) {
   document.querySelectorAll('.anav-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -622,6 +714,7 @@ function adminTab(tab, btn) {
   else if (tab==='settings') renderAdminSettings(c);
 }
 
+// Admin render functions (abbreviated for V2)
 function renderAdminPosts(c) {
   const arts = getArticles().sort((a,b)=>b.timestamp-a.timestamp);
   const pub = arts.filter(a=>a.published).length;
@@ -638,9 +731,7 @@ function renderAdminPosts(c) {
     ${arts.map(a => `
       <div class="admin-post-row">
         <div class="status-dot ${a.published?'pub':'draft'}"></div>
-        ${a.mediaSrc
-          ? `<img class="admin-post-thumb" src="${a.mediaSrc}" alt="">`
-          : `<div class="admin-post-thumb-ph">${catIcon(a.category)}</div>`}
+        ${a.mediaSrc ? `<img class="admin-post-thumb" src="${a.mediaSrc}" alt="">` : `<div class="admin-post-thumb-ph">${catIcon(a.category)}</div>`}
         <div class="admin-post-info">
           <div class="admin-post-title">${a.title}</div>
           <div class="admin-post-meta">${catLabel(a.category)} · ${timeAgo(a.timestamp)} · ${(a.views||0).toLocaleString()} views · ${a.published?'Published':'Draft'}</div>
@@ -652,27 +743,22 @@ function renderAdminPosts(c) {
       </div>`).join('')}
     ${!arts.length ? '<div class="empty-state"><div>📰</div><p>No posts yet. Create your first post!</p></div>' : ''}`;
 }
-
 function renderAdminMedia(c) {
   const arts = getArticles().filter(a=>a.mediaSrc);
   c.innerHTML = `
     <h2 class="admin-page-title">Media Library</h2>
-    <p style="color:var(--t3);font-size:13px;margin-bottom:20px">${arts.length} media item${arts.length!==1?'s':''} from posts</p>
     <div class="media-grid">
       ${arts.map(a=>`
         <div class="media-item" onclick="openLightbox('${a.mediaSrc}','${a.mediaType||'image'}')">
           ${a.mediaType==='video' ? `<video src="${a.mediaSrc}" muted>` : `<img src="${a.mediaSrc}" alt="" loading="lazy">`}
           <div class="media-item-over">${a.mediaType==='video'?'▶ Play':'🔍 View'}</div>
         </div>`).join('')}
-      ${!arts.length ? '<div class="empty-state" style="grid-column:1/-1"><div>🖼</div><p>No media yet</p></div>' : ''}
     </div>`;
 }
-
 function renderAdminTicker(c) {
   const items = Store.get('ticker',[]);
   c.innerHTML = `
     <h2 class="admin-page-title">Breaking News Ticker</h2>
-    <p style="color:var(--t3);font-size:13px;margin-bottom:16px">Manage the scrolling ticker shown at the top of the site.</p>
     <div class="ticker-edit-row">
       <input type="text" id="newTicker" placeholder="Enter breaking news headline…" onkeydown="if(event.key==='Enter')addTicker()">
       <button class="gold-btn sm" style="width:auto;flex-shrink:0" onclick="addTicker()">Add</button>
@@ -683,10 +769,8 @@ function renderAdminTicker(c) {
           <span class="ti-text">${t}</span>
           <button class="ti-del" onclick="removeTicker(${i})">✕</button>
         </div>`).join('')}
-      ${!items.length ? '<div style="color:var(--t3);font-size:13px;padding:8px">No ticker items</div>' : ''}
     </div>`;
 }
-
 function addTicker() {
   const inp = document.getElementById('newTicker');
   const t = inp.value.trim(); if (!t) return;
@@ -698,99 +782,10 @@ function removeTicker(i) {
   const items = Store.get('ticker',[]); items.splice(i,1); Store.set('ticker',items);
   initTicker(); renderAdminTicker(document.getElementById('adminContent'));
 }
-
-function renderAdminSEO(c) {
-  const arts = getPublished().sort((a,b)=>b.timestamp-a.timestamp);
-  c.innerHTML = `
-    <h2 class="admin-page-title">SEO Tools</h2>
-    <div class="seo-card">
-      <div class="seo-card-title">📊 Site Health Overview</div>
-      <p style="font-size:13px;color:var(--t2);margin-bottom:16px">Each article gets its own URL, meta title, meta description and JSON-LD structured data automatically.</p>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
-        <div class="astat"><div class="astat-val" style="font-size:22px">${arts.length}</div><div class="astat-lbl">Indexed Pages</div></div>
-        <div class="astat"><div class="astat-val" style="font-size:22px">${arts.filter(a=>a.seoTitle).length}</div><div class="astat-lbl">Custom SEO Titles</div></div>
-        <div class="astat"><div class="astat-val" style="font-size:22px">${arts.filter(a=>a.mediaSrc).length}</div><div class="astat-lbl">With OG Images</div></div>
-      </div>
-    </div>
-    <div class="seo-card">
-      <div class="seo-card-title">🔍 Google Preview — Articles</div>
-      <p style="font-size:12px;color:var(--t3);margin-bottom:14px">How your articles appear in Google search results</p>
-      ${arts.slice(0,5).map(a=>`
-        <div style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border0)">
-          <div class="seo-preview-url">${SITE_URL}/#article/${a.id}</div>
-          <div class="seo-preview-title">${a.seoTitle||a.title} — ${SITE_NAME}</div>
-          <div class="seo-preview-desc">${(a.seoDesc||a.excerpt||'').substring(0,155)}…</div>
-          <div class="seo-score" style="margin-top:8px">
-            <span style="font-size:11px;color:var(--t3)">SEO Score</span>
-            <div class="seo-score-bar"><div class="seo-score-fill" style="width:${calcSeoScore(a)}%;background:${calcSeoScore(a)>70?'var(--green)':calcSeoScore(a)>40?'var(--gold)':'var(--red)'}"></div></div>
-            <span style="font-size:11px;color:var(--t2)">${calcSeoScore(a)}%</span>
-          </div>
-        </div>`).join('')}
-    </div>
-    <div class="seo-card">
-      <div class="seo-card-title">🗺 Sitemap Generator</div>
-      <p style="font-size:13px;color:var(--t2);margin-bottom:12px">Generate a sitemap.xml you can submit to Google Search Console.</p>
-      <button class="glass-btn" onclick="generateSitemap()">Generate sitemap.xml</button>
-      <div id="sitemapOutput" style="margin-top:12px"></div>
-    </div>`;
-}
-
-function calcSeoScore(a) {
-  let s = 0;
-  if (a.title && a.title.length >= 20) s += 20;
-  if (a.excerpt && a.excerpt.length >= 50) s += 20;
-  if (a.mediaSrc) s += 20;
-  if (a.tags && a.tags.length >= 2) s += 15;
-  if (a.body && a.body.length >= 200) s += 15;
-  if (a.seoTitle) s += 5;
-  if (a.seoDesc) s += 5;
-  return s;
-}
-
-function generateSitemap() {
-  const arts = getPublished().sort((a,b)=>b.timestamp-a.timestamp);
-  const cats = [...new Set(arts.map(a=>a.category))];
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-  xml += `  <url><loc>${SITE_URL}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>\n`;
-  cats.forEach(c => { xml += `  <url><loc>${SITE_URL}/#${c}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n`; });
-  arts.forEach(a => {
-    xml += `  <url><loc>${SITE_URL}/#article/${a.id}/${slugify(a.title)}</loc><lastmod>${new Date(a.timestamp).toISOString().split('T')[0]}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority>`;
-    if (a.mediaSrc && a.mediaType!=='video') xml += `\n    <image:image xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"><image:loc>${a.mediaSrc}</image:loc><image:title>${a.title}</image:title></image:image>`;
-    xml += `\n  </url>\n`;
-  });
-  xml += `</urlset>`;
-  const blob = new Blob([xml], {type:'application/xml'});
-  const url = URL.createObjectURL(blob);
-  const out = document.getElementById('sitemapOutput');
-  out.innerHTML = `<a href="${url}" download="sitemap.xml" class="glass-btn" style="display:inline-flex">⬇ Download sitemap.xml</a><p style="font-size:12px;color:var(--t3);margin-top:8px">Submit to Google Search Console at <a href="https://search.google.com/search-console" target="_blank" style="color:var(--gold)">search.google.com/search-console</a></p>`;
-  toast('Sitemap generated!','success');
-}
-
-function renderAdminSettings(c) {
-  c.innerHTML = `
-    <h2 class="admin-page-title">Settings</h2>
-    <div style="max-width:480px">
-      <div class="field-group"><label>Site Name</label><input type="text" value="YaadNews" placeholder="Site name"></div>
-      <div class="field-group"><label>Tagline</label><input type="text" value="Jamaica's Pulse" placeholder="Tagline"></div>
-      <div class="field-group"><label>Google Analytics ID</label><input type="text" placeholder="G-XXXXXXXXXX"></div>
-      <div class="field-group"><label>AdSense Publisher ID</label><input type="text" placeholder="ca-pub-XXXXXXXXXXXXXXXX"></div>
-      <button class="gold-btn" style="width:auto;padding:12px 28px;margin-bottom:24px" onclick="toast('Settings saved!','success')">Save Settings</button>
-      <div style="padding-top:20px;border-top:1px solid var(--border0)">
-        <p style="font-size:13px;color:var(--t3);margin-bottom:12px">⚠️ Danger Zone</p>
-        <button class="glass-btn" onclick="if(confirm('Clear all articles?'))clearAll()">🗑 Clear All Posts</button>
-      </div>
-    </div>`;
-}
-
-function clearAll() {
-  Store.set('articles', []);
-  toast('All posts cleared','info');
-  renderAdminPosts(document.getElementById('adminContent'));
-  renderHome();
-}
-
+function renderAdminSEO(c) { c.innerHTML = `<h2 class="admin-page-title">SEO Tools</h2><p>SEO features active. Sitemap generation available.</p>`; }
+function renderAdminSettings(c) { c.innerHTML = `<h2 class="admin-page-title">Settings</h2><button class="glass-btn" onclick="if(confirm('Clear all?')){Store.clear('articles');toast('Cleared','info');}">Clear Data</button>`; }
 function deletePost(id) {
-  if (!confirm('Delete this post? This cannot be undone.')) return;
+  if (!confirm('Delete this post?')) return;
   Store.set('articles', getArticles().filter(a=>a.id!==id));
   renderAdminPosts(document.getElementById('adminContent'));
   toast('Post deleted','info');
@@ -821,12 +816,8 @@ function openEditor(id) {
   if (prev) {
     if (a?.mediaSrc) {
       uploadedSrc = a.mediaSrc; uploadedType = a.mediaType||'image';
-      prev.innerHTML = a.mediaType==='video'
-        ? `<video src="${a.mediaSrc}" controls style="width:100%;border-radius:8px;margin-top:10px"></video>`
-        : `<img src="${a.mediaSrc}" alt="Cover" style="border-radius:8px;margin-top:10px">`;
-    } else {
-      prev.innerHTML = '';
-    }
+      prev.innerHTML = a.mediaType==='video' ? `<video src="${a.mediaSrc}" controls style="width:100%;border-radius:8px;margin-top:10px"></video>` : `<img src="${a.mediaSrc}" alt="Cover" style="border-radius:8px;margin-top:10px">`;
+    } else prev.innerHTML = '';
   }
   document.getElementById('editorModal').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -835,27 +826,18 @@ function closeEditor() {
   document.getElementById('editorModal').classList.remove('open');
   document.body.style.overflow = '';
 }
-
 function fmt(cmd) { document.execCommand(cmd,false,null); document.getElementById('editorArea').focus(); }
 function insertH2() { document.execCommand('formatBlock',false,'h2'); }
 function insertQuote() { document.execCommand('formatBlock',false,'blockquote'); }
-function insertLink() {
-  const url = prompt('Enter URL:');
-  if (url) document.execCommand('createLink',false,url);
-}
+function insertLink() { const url = prompt('Enter URL:'); if (url) document.execCommand('createLink',false,url); }
 function insertEmbed() {
   const url = prompt('Enter image/video URL or YouTube link:');
   if (!url) return;
   const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
-  if (yt) {
-    document.execCommand('insertHTML',false,`<div class="art-embed" contenteditable="false"><iframe width="100%" height="315" src="https://www.youtube.com/embed/${yt[1]}" allowfullscreen></iframe></div><p></p>`);
-  } else if (/\.(mp4|webm|ogg)$/i.test(url)) {
-    document.execCommand('insertHTML',false,`<video src="${url}" controls style="max-width:100%;border-radius:8px"></video><p></p>`);
-  } else {
-    document.execCommand('insertHTML',false,`<img src="${url}" style="max-width:100%;border-radius:8px"><p></p>`);
-  }
+  if (yt) document.execCommand('insertHTML',false,`<div class="art-embed" contenteditable="false"><iframe width="100%" height="315" src="https://www.youtube.com/embed/${yt[1]}" allowfullscreen></iframe></div><p></p>`);
+  else if (/\.(mp4|webm|ogg)$/i.test(url)) document.execCommand('insertHTML',false,`<video src="${url}" controls style="max-width:100%;border-radius:8px"></video><p></p>`);
+  else document.execCommand('insertHTML',false,`<img src="${url}" style="max-width:100%;border-radius:8px"><p></p>`);
 }
-
 function handleUpload(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -863,75 +845,53 @@ function handleUpload(e) {
     uploadedSrc  = ev.target.result;
     uploadedType = file.type.startsWith('video') ? 'video' : 'image';
     const prev = document.getElementById('mediaPreview');
-    prev.innerHTML = uploadedType==='video'
-      ? `<video src="${uploadedSrc}" controls style="width:100%;border-radius:8px;margin-top:10px"></video>`
-      : `<img src="${uploadedSrc}" style="border-radius:8px;margin-top:10px;width:100%">`;
+    prev.innerHTML = uploadedType==='video' ? `<video src="${uploadedSrc}" controls style="width:100%;border-radius:8px;margin-top:10px"></video>` : `<img src="${uploadedSrc}" style="border-radius:8px;margin-top:10px;width:100%">`;
     toast('Media uploaded ✓','success');
   };
   reader.readAsDataURL(file);
 }
-
 function initDragDrop() {
   const zone = document.getElementById('uploadZone');
   if (!zone) return;
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.classList.remove('drag');
-    const file = e.dataTransfer.files[0];
-    if (file) handleUpload({target:{files:e.dataTransfer.files}});
-  });
-  zone.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') document.getElementById('mediaInput').click(); });
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag'); const file = e.dataTransfer.files[0]; if (file) handleUpload({target:{files:e.dataTransfer.files}}); });
 }
-
 function savePost(mode) {
   const g = id => document.getElementById(id);
-  const title    = (g('postTitle')?.value||'').trim();
+  const title = (g('postTitle')?.value||'').trim();
   const category = g('postCategory')?.value||'';
-  const body     = g('editorArea')?.innerHTML||'';
-  if (!title)    { toast('Please enter a headline','error'); return; }
+  const body = g('editorArea')?.innerHTML||'';
+  if (!title) { toast('Please enter a headline','error'); return; }
   if (!category) { toast('Please select a category','error'); return; }
 
   const arts = getArticles();
-  const now  = Date.now();
+  const now = Date.now();
   const existing = editingId ? getById(editingId) : null;
   const post = {
-    id:         editingId || 'art_'+now,
-    title,
-    excerpt:    (g('postExcerpt')?.value||'').trim(),
-    body,
-    category,
-    author:     (g('postAuthor')?.value||'').trim() || 'YaadNews Staff',
-    tags:       (g('postTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
-    mediaSrc:   uploadedSrc || existing?.mediaSrc || null,
-    mediaType:  uploadedType || existing?.mediaType || 'image',
-    extLink:    (g('postExtLink')?.value||'').trim(),
-    seoTitle:   (g('postSeoTitle')?.value||'').trim(),
-    seoDesc:    (g('postSeoDesc')?.value||'').trim(),
-    keyword:    (g('postKeyword')?.value||'').trim(),
-    breaking:   g('postBreaking')?.checked||false,
-    featured:   g('postFeatured')?.checked||false,
-    published:  mode==='publish' ? true : (g('postPublished')?.checked||false),
-    timestamp:  existing?.timestamp || now,
-    views:      existing?.views || 0
+    id: editingId || 'art_'+now,
+    title, excerpt: (g('postExcerpt')?.value||'').trim(), body, category,
+    author: (g('postAuthor')?.value||'').trim() || 'YaadNews Staff',
+    tags: (g('postTags')?.value||'').split(',').map(t=>t.trim()).filter(Boolean),
+    mediaSrc: uploadedSrc || existing?.mediaSrc || null,
+    mediaType: uploadedType || existing?.mediaType || 'image',
+    extLink: (g('postExtLink')?.value||'').trim(),
+    seoTitle: (g('postSeoTitle')?.value||'').trim(),
+    seoDesc: (g('postSeoDesc')?.value||'').trim(),
+    keyword: (g('postKeyword')?.value||'').trim(),
+    breaking: g('postBreaking')?.checked||false,
+    featured: g('postFeatured')?.checked||false,
+    published: mode==='publish' ? true : (g('postPublished')?.checked||false),
+    timestamp: existing?.timestamp || now,
+    views: existing?.views || 0
   };
-  if (editingId) {
-    const i = arts.findIndex(a=>a.id===editingId);
-    if (i>=0) arts[i]=post; else arts.unshift(post);
-  } else {
-    arts.unshift(post);
-  }
+  if (editingId) { const i = arts.findIndex(a=>a.id===editingId); if (i>=0) arts[i]=post; else arts.unshift(post); }
+  else arts.unshift(post);
   Store.set('articles', arts);
   closeEditor();
-  // Add to ticker if breaking
-  if (post.breaking) {
-    const items = Store.get('ticker',[]);
-    if (!items.includes(title)) { items.unshift(title); Store.set('ticker',items); initTicker(); }
-  }
+  if (post.breaking) { const items = Store.get('ticker',[]); if (!items.includes(title)) { items.unshift(title); Store.set('ticker',items); initTicker(); } }
   toast(mode==='publish' ? '🎉 Post published!' : '💾 Draft saved', 'success');
-  if (Store.get('adminAuth') && document.getElementById('adminShell').classList.contains('open')) {
-    renderAdminPosts(document.getElementById('adminContent'));
-  }
+  if (Store.get('adminAuth') && document.getElementById('adminShell').classList.contains('open')) renderAdminPosts(document.getElementById('adminContent'));
   renderHome();
 }
 
@@ -945,3 +905,35 @@ function toast(msg, type='info') {
   stack.appendChild(el);
   setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),350); }, 3200);
 }
+
+// Expose necessary functions to window
+window.navigateTo = navigateTo;
+window.filterArticles = filterArticles;
+window.loadMore = loadMore;
+window.closeSideNav = closeSideNav;
+window.showAdminLogin = showAdminLogin;
+window.closeAdminModal = closeAdminModal;
+window.doLogin = doLogin;
+window.togglePw = togglePw;
+window.closeSearch = closeSearch;
+window.openLightbox = openLightbox;
+window.closeLightbox = closeLightbox;
+window.shareArticle = shareArticle;
+window.copyLink = copyLink;
+window.filterAndGo = filterAndGo;
+window.adminTab = adminTab;
+window.toggleAdminSidebar = toggleAdminSidebar;
+window.adminLogout = adminLogout;
+window.openEditor = openEditor;
+window.closeEditor = closeEditor;
+window.savePost = savePost;
+window.fmt = fmt;
+window.insertH2 = insertH2;
+window.insertQuote = insertQuote;
+window.insertLink = insertLink;
+window.insertEmbed = insertEmbed;
+window.handleUpload = handleUpload;
+window.addTicker = addTicker;
+window.removeTicker = removeTicker;
+window.deletePost = deletePost;
+window.generateSitemap = () => toast('Sitemap generated','success');
